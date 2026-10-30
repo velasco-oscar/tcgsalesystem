@@ -1,6 +1,7 @@
+pub use crate::catalog::{categories, delete_category, save_category};
 pub use crate::models::*;
-pub use crate::repository::{categories, movements, product, sale};
-use crate::{db, repository, settings};
+pub use crate::repository::{movements, product, sale};
+use crate::{catalog, db, repository, settings};
 use chrono::{Duration, NaiveDate, SecondsFormat, TimeZone, Utc};
 use chrono_tz::Tz;
 use rusqlite::{Connection, TransactionBehavior};
@@ -72,19 +73,15 @@ pub fn configuration(c: &Connection) -> Result<(settings::StoreSettings, u8)> {
     Ok((value, decimals))
 }
 
-pub fn save_category(c: &Connection, id: Option<i64>, name: &str) -> Result<()> {
-    let name = text(name, 80, true, "el nombre de categoría")?;
-    repository::put_category(c, id, &name)
-}
-
 pub fn products(
     c: &Connection,
     search: &str,
     include_inactive: bool,
+    category_id: Option<i64>,
     offset: i64,
 ) -> Result<Vec<Product>> {
     let search = text(search, 160, false, "la búsqueda")?;
-    repository::products(c, &search, include_inactive, offset)
+    repository::products(c, &search, include_inactive, category_id, offset)
 }
 
 pub fn save_product(c: &mut Connection, input: ProductInput) -> Result<i64> {
@@ -113,24 +110,9 @@ pub fn save_product(c: &mut Connection, input: ProductInput) -> Result<i64> {
     {
         return Err("Las existencias iniciales solo se registran al crear un producto, hasta un millón de unidades.".into());
     }
-    let card = if let Some(card) = input.card {
-        let card = CardDetails {
-            game: text(&card.game, 80, true, "el juego")?,
-            expansion: text(&card.expansion, 100, true, "la expansión")?,
-            number: text(&card.number, 40, true, "el número")?,
-            ..card
-        };
-        if !["es", "en", "ja", "fr", "de", "it", "pt", "ko", "zh"].contains(&card.language.as_str())
-            || !["NM", "LP", "MP", "HP", "DMG"].contains(&card.condition.as_str())
-            || !["normal", "foil", "reverse", "etched", "other"].contains(&card.finish.as_str())
-        {
-            return Err("Selecciona idioma, condición y acabado válidos para la carta.".into());
-        }
-        Some(card)
-    } else {
-        None
-    };
-    let card_json = serde_json::to_string(&card).map_err(|e| e.to_string())?;
+    let attributes = catalog::effective_attributes(&tx, input.category_id)?;
+    let values = catalog::validate_values(&attributes, &input.attributes)?;
+    let tags = catalog::validate_tags(&input.tags)?;
     let id = repository::put_product(
         &tx,
         repository::ProductValues {
@@ -139,12 +121,12 @@ pub fn save_product(c: &mut Connection, input: ProductInput) -> Result<i64> {
             name: &name,
             category_id: input.category_id,
             variant: &variant,
-            card_json: &card_json,
             price,
             cost,
             active: input.active,
         },
     )?;
+    catalog::put_details(&tx, id, &values, &tags)?;
     if input.id.is_none() && input.initial_stock > 0 {
         repository::insert_movement(
             &tx,

@@ -7,7 +7,8 @@ El código del MVP está implementado. La compilación, las pruebas automatizada
 ## Funciones
 
 - Preferencias iniciales y edición desde el menú lateral: nombre, giro, moneda y zona horaria.
-- Catálogo con SKU único, categorías editables, variantes, precio, costo informativo y activación/desactivación. Atributos de cartas TCG opcionales.
+- Catálogo con SKU único, variantes, precio, costo informativo, etiquetas y activación/desactivación.
+- Categorías con un nivel de subcategorías y atributos propios (texto, número o lista), heredados por las subcategorías. Plantillas de inicio para cartas TCG y ropa.
 - Existencias iniciales, entradas y ajustes con motivo e historial. Sin existencias negativas ni edición directa del saldo.
 - Carrito y venta en efectivo, tarjeta o transferencia. Cálculos y validación en Rust; comprobante en pantalla.
 - Cobro idempotente, con intento persistido antes de enviarlo y reintento del mismo contenido ante respuesta desconocida.

@@ -1,4 +1,7 @@
 mod backups;
+mod catalog;
+#[cfg(test)]
+mod catalog_tests;
 mod commands;
 mod db;
 mod errors;
@@ -51,6 +54,7 @@ pub fn run() {
             commands::save_product,
             commands::get_categories,
             commands::save_category,
+            commands::delete_category,
             commands::get_movements,
             commands::record_stock,
             commands::checkout,

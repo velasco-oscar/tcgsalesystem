@@ -22,7 +22,8 @@ fn input(sku: &str, stock: i64) -> ProductInput {
         name: format!("Producto {sku}"),
         category_id: None,
         variant: "Azul".into(),
-        card: None,
+        attributes: vec![],
+        tags: vec![],
         price: "12.35".into(),
         cost: "4.00".into(),
         initial_stock: stock,
@@ -440,6 +441,6 @@ fn name_search_handles_spanish_uppercase_characters() {
     let mut value = input("ES", 0);
     value.name = "ÚTILES DE PAPELERÍA".into();
     save_product(&mut c, value).unwrap();
-    assert_eq!(products(&c, "papelería", true, 0).unwrap().len(), 1);
-    assert_eq!(products(&c, "útiles", true, 0).unwrap().len(), 1);
+    assert_eq!(products(&c, "papelería", true, None, 0).unwrap().len(), 1);
+    assert_eq!(products(&c, "útiles", true, None, 0).unwrap().len(), 1);
 }

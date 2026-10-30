@@ -80,11 +80,12 @@ pub fn get_product(id: i64, state: State<'_, AppState>) -> pos::Result<pos::Prod
 pub fn get_products(
     search: String,
     include_inactive: bool,
+    category_id: Option<i64>,
     offset: i64,
     state: State<'_, AppState>,
 ) -> pos::Result<Vec<pos::Product>> {
     with_db(&state, |c| {
-        pos::products(c, &search, include_inactive, offset)
+        pos::products(c, &search, include_inactive, category_id, offset)
     })
 }
 #[tauri::command]
@@ -96,8 +97,12 @@ pub fn get_categories(state: State<'_, AppState>) -> pos::Result<Vec<pos::Catego
     with_db(&state, |c| pos::categories(c))
 }
 #[tauri::command]
-pub fn save_category(id: Option<i64>, name: String, state: State<'_, AppState>) -> pos::Result<()> {
-    with_db(&state, |c| pos::save_category(c, id, &name))
+pub fn save_category(input: pos::CategoryInput, state: State<'_, AppState>) -> pos::Result<i64> {
+    with_db(&state, |c| pos::save_category(c, input))
+}
+#[tauri::command]
+pub fn delete_category(id: i64, state: State<'_, AppState>) -> pos::Result<()> {
+    with_db(&state, |c| pos::delete_category(c, id))
 }
 #[tauri::command]
 pub fn get_movements(

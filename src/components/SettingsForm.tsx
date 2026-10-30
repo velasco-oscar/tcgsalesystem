@@ -32,7 +32,7 @@ export function SettingsForm({ status, initial, onSaved }: Props) {
       const saved = await saveStoreSettings(settings);
       setSettings(saved);
       onSaved(saved);
-      setMessage("Configuración guardada en este equipo.");
+      setMessage("Configuración guardada en este equipo");
     } catch (reason: unknown) {
       setError(String(reason));
     } finally {
@@ -42,24 +42,21 @@ export function SettingsForm({ status, initial, onSaved }: Props) {
 
   return (
     <section className="setup-card" aria-labelledby="setup-title">
-      <div className="section-topline"><Icon name="settings" /><span>{initial ? "PRIMEROS PASOS" : "PREFERENCIAS DEL NEGOCIO"}</span></div>
-      <h2 id="setup-title">{initial ? "Configura tu negocio" : "Datos del negocio"}</h2>
-      <p>{initial ? "Guarda tus preferencias para entrar al panel principal." : "Actualiza el nombre, giro y moneda de tu negocio."}</p>
+      <h2 id="setup-title">Datos del negocio</h2>
       <form onSubmit={handleSubmit}>
         <fieldset disabled={!status || saving}>
           <div className="settings-fields">
             <div className="form-field full-width">
               <label htmlFor="store-name">Nombre del negocio</label>
-              <input id="store-name" autoComplete="organization" placeholder="Escribe el nombre de tu negocio"
+              <input id="store-name" autoComplete="organization" placeholder="Nombre de la tienda"
                 value={settings.storeName} maxLength={120} required
                 onChange={(event) => updateField("storeName", event.target.value)} />
             </div>
             <div className="form-field">
               <label htmlFor="business-sector">Giro del negocio</label>
-              <input id="business-sector" placeholder="Por ejemplo: papelería y regalos"
-                value={settings.businessSector} maxLength={80} required aria-describedby="sector-help"
+              <input id="business-sector" placeholder="Cartas coleccionables y accesorios"
+                value={settings.businessSector} maxLength={80} required
                 onChange={(event) => updateField("businessSector", event.target.value)} />
-              <p id="sector-help" className="field-help">Escribe tu propio giro.</p>
             </div>
             <div className="form-field">
               <label htmlFor="currency-code">Moneda del negocio</label>
@@ -70,21 +67,19 @@ export function SettingsForm({ status, initial, onSaved }: Props) {
                   <option key={currency.code} value={currency.code}>{currency.code} · {currency.name}</option>
                 ))}
               </select>
-              <p id="currency-help" className="field-help">{status?.currencyLocked ? "Bloqueada: ya existen productos u operaciones monetarias." : "Una moneda, sin conversiones. Se bloqueará al registrar el primer producto."}</p>
+              <p id="currency-help" className="field-help">{status?.currencyLocked ? "Bloqueada: ya hay productos" : "No se podrá cambiar después del primer producto"}</p>
             </div>
             <div className="form-field full-width">
               <label htmlFor="time-zone">Zona horaria del negocio</label>
               <input id="time-zone" value={settings.timeZone} list="time-zones" required disabled={status?.timeZoneLocked}
                 onChange={(event) => updateField("timeZone", event.target.value)} />
               <datalist id="time-zones"><option value="America/Tijuana" /><option value="America/Mexico_City" /><option value="America/Hermosillo" /><option value="America/Cancun" /><option value="UTC" /></datalist>
-              <p className="field-help">{status?.timeZoneLocked ? "Bloqueada para mantener los períodos históricos." : "Zona IANA. Se bloqueará al registrar la primera venta."}</p>
+              <p className="field-help">{status?.timeZoneLocked ? "Bloqueada: ya hay ventas" : "No se podrá cambiar después de la primera venta"}</p>
             </div>
           </div>
           <div className="price-policy">
             <Icon name="check" />
-            <div><strong>Precios finales con impuestos incluidos</strong>
-              <p>El precio registrado será el importe a cobrar. No se añadirán impuestos al total.</p>
-            </div>
+            <strong>Los precios ya incluyen impuestos</strong>
           </div>
           {error && <div className="notice error" role="alert">{error}</div>}
           <div className="form-actions">
