@@ -43,7 +43,8 @@ export function parseMoney(value: string, digits: number): bigint | null {
   const result = BigInt(whole) * 10n ** BigInt(digits) + BigInt(fraction.padEnd(digits, '0') || '0');
   return result <= 9_000_000_000_000n ? result : null;
 }
-export function displayMoney(value: number, code: string, digits: number) { return `${decimal(value, digits)} ${code}`; }
+// Solo para mostrar: agrupa miles con coma; los formularios siguen usando decimal() sin separadores.
+export function displayMoney(value: number, code: string, digits: number) { return `${decimal(value, digits).replace(/\B(?=(\d{3})+(?!\d))(?=\d*(\.|$))/g, ',')} ${code}`; }
 export function dateTime(value: string, timeZone: string) { return new Intl.DateTimeFormat('es-MX', { timeZone, dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)); }
 export function today(timeZone: string) { const parts = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date()); return ['year', 'month', 'day'].map((type) => parts.find((p) => p.type === type)?.value).join('-'); }
 export function variantName(p: { variant: string; card: CardDetails | null }) { return [p.variant, p.card && `${p.card.game} · ${p.card.expansion} #${p.card.number} · ${p.card.language} · ${p.card.condition} · ${p.card.finish}`].filter(Boolean).join(' · '); }

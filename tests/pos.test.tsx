@@ -52,7 +52,7 @@ describe('flujo del POS (puente Tauri simulado)', () => {
     expect(await screen.findByLabelText('Giro del negocio')).toHaveProperty('value', 'Papelería');
     fireEvent.change(screen.getByLabelText('Giro del negocio'), { target: { value: 'Ferretería' } });
     fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
-    expect(await screen.findByText('Configuración guardada en este equipo.')).toBeTruthy();
+    expect(await screen.findByText('Configuración guardada en este equipo')).toBeTruthy();
     expect(status.settings.businessSector).toBe('Ferretería');
   });
   it('solo abre el panel después de guardar preferencias incompletas', async () => {
@@ -100,7 +100,7 @@ describe('flujo del POS (puente Tauri simulado)', () => {
     expect(lastInput.input).toMatchObject({ id: 1, price: '12.35', initialStock: 0 });
   });
   it('cobra, muestra el cambio y limpia el intento pendiente al recibir comprobante', async () => {
-    await startSale(); expect(screen.getByText('Cambio: 7.65 MXN')).toBeTruthy();
+    await startSale(); expect(screen.getByRole('status', { name: 'Cambio' }).textContent).toBe('7.65 MXN');
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar venta' }));
     expect(await screen.findByRole('dialog', { name: 'Comprobante V-00000001' })).toBeTruthy();
     expect(localStorage.getItem('tcg-pos.pending-checkout.v1')).toBeNull();
@@ -147,7 +147,7 @@ describe('flujo del POS (puente Tauri simulado)', () => {
     vi.mocked(invoke).mockImplementation((command, args) => command === 'get_product' ? Promise.resolve({ ...p, price: 2345 }) : implementation(command, args));
     await startSale(); fireEvent.click(screen.getByRole('button', { name: 'Actualizar precios y existencias' }));
     expect(await screen.findByText('Precios y existencias actualizados. Revisa el total antes de cobrar.')).toBeTruthy();
-    expect(screen.getByText('Total: 23.45 MXN')).toBeTruthy();
+    expect(screen.getByRole('status', { name: 'Total' }).textContent).toBe('23.45 MXN');
     expect(invoke).toHaveBeenCalledWith('get_product', { id: 1 });
   });
   it('exige mercancía disponible y dinero devuelto antes de anular', async () => {
@@ -158,8 +158,19 @@ describe('flujo del POS (puente Tauri simulado)', () => {
     fireEvent.change(within(dialog).getByLabelText('Motivo obligatorio'), { target: { value: 'Devolución completa' } });
     fireEvent.click(within(dialog).getByRole('checkbox', { name: /Toda la mercancía/ })); expect(confirm).toHaveProperty('disabled', true);
     fireEvent.click(within(dialog).getByRole('checkbox', { name: /Devolví al cliente/ })); fireEvent.click(confirm);
-    expect(await screen.findByText('VENTA ANULADA', { exact: false })).toBeTruthy();
+    expect(await screen.findByText('Venta anulada')).toBeTruthy();
     expect(invoke).toHaveBeenCalledWith('cancel_sale', { id: 1, reason: 'Devolución completa', restocked: true, refunded: true });
+  });
+  it('cambia entre modo claro y oscuro y recuerda la elección en este equipo', async () => {
+    render(<App />);
+    const sidebar = (await screen.findByRole('navigation', { name: 'Navegación principal' })).parentElement!;
+    fireEvent.click(screen.getByRole('button', { name: 'Cambiar a modo claro' }));
+    expect(document.documentElement.dataset.theme).toBe('light');
+    expect(localStorage.getItem('tcg-pos.theme.v1')).toBe('light');
+    fireEvent.click(within(sidebar).getByRole('button', { name: 'Configuración' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Sistema' }));
+    expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
+    expect(localStorage.getItem('tcg-pos.theme.v1')).toBeNull();
   });
   it('exige confirmación escrita antes de restaurar', async () => {
     render(<App />); await navigate('Respaldos'); fireEvent.click(screen.getByRole('button', { name: 'Seleccionar respaldo' }));
