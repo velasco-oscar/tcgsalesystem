@@ -43,7 +43,6 @@ export function SettingsForm({ status, initial, onSaved }: Props) {
   return (
     <section className="setup-card" aria-labelledby="setup-title">
       <h2 id="setup-title">Datos del negocio</h2>
-      <p>{initial ? "Guarda tus preferencias para entrar al panel principal" : "Nombre, giro, moneda y zona horaria de la tienda"}</p>
       <form onSubmit={handleSubmit}>
         <fieldset disabled={!status || saving}>
           <div className="settings-fields">
@@ -56,9 +55,8 @@ export function SettingsForm({ status, initial, onSaved }: Props) {
             <div className="form-field">
               <label htmlFor="business-sector">Giro del negocio</label>
               <input id="business-sector" placeholder="Cartas coleccionables y accesorios"
-                value={settings.businessSector} maxLength={80} required aria-describedby="sector-help"
+                value={settings.businessSector} maxLength={80} required
                 onChange={(event) => updateField("businessSector", event.target.value)} />
-              <p id="sector-help" className="field-help">Texto libre, aparece en el menú lateral</p>
             </div>
             <div className="form-field">
               <label htmlFor="currency-code">Moneda del negocio</label>
@@ -69,21 +67,19 @@ export function SettingsForm({ status, initial, onSaved }: Props) {
                   <option key={currency.code} value={currency.code}>{currency.code} · {currency.name}</option>
                 ))}
               </select>
-              <p id="currency-help" className="field-help">{status?.currencyLocked ? "Bloqueada: ya existen productos u operaciones monetarias" : "Una moneda, sin conversiones. Se bloqueará al registrar el primer producto."}</p>
+              <p id="currency-help" className="field-help">{status?.currencyLocked ? "Bloqueada: ya hay productos" : "No se podrá cambiar después del primer producto"}</p>
             </div>
             <div className="form-field full-width">
               <label htmlFor="time-zone">Zona horaria del negocio</label>
               <input id="time-zone" value={settings.timeZone} list="time-zones" required disabled={status?.timeZoneLocked}
                 onChange={(event) => updateField("timeZone", event.target.value)} />
               <datalist id="time-zones"><option value="America/Tijuana" /><option value="America/Mexico_City" /><option value="America/Hermosillo" /><option value="America/Cancun" /><option value="UTC" /></datalist>
-              <p className="field-help">{status?.timeZoneLocked ? "Bloqueada para mantener los períodos históricos" : "Zona IANA. Se bloqueará al registrar la primera venta."}</p>
+              <p className="field-help">{status?.timeZoneLocked ? "Bloqueada: ya hay ventas" : "No se podrá cambiar después de la primera venta"}</p>
             </div>
           </div>
           <div className="price-policy">
             <Icon name="check" />
-            <div><strong>Precios finales con impuestos incluidos</strong>
-              <p>El precio registrado será el importe a cobrar. No se añadirán impuestos al total.</p>
-            </div>
+            <strong>Los precios ya incluyen impuestos</strong>
           </div>
           {error && <div className="notice error" role="alert">{error}</div>}
           <div className="form-actions">

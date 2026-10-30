@@ -1,4 +1,5 @@
 use crate::{
+    catalog,
     errors::{Result, sql},
     models::*,
     settings,
@@ -7,24 +8,10 @@ use chrono::DateTime;
 use chrono_tz::Tz;
 use rusqlite::{Connection, OptionalExtension, params};
 
-const SELECT_PRODUCT: &str = "SELECT p.id,p.sku,p.name,p.category_id,c.name,p.variant,p.card_json,p.price,p.cost,p.stock,p.active FROM products p LEFT JOIN categories c ON c.id=p.category_id";
-
-pub fn categories(c: &Connection) -> Result<Vec<Category>> {
-    c.prepare("SELECT id,name FROM categories ORDER BY name")
-        .map_err(sql)?
-        .query_map([], |r| {
-            Ok(Category {
-                id: r.get(0)?,
-                name: r.get(1)?,
-            })
-        })
-        .map_err(sql)?
-        .collect::<rusqlite::Result<_>>()
-        .map_err(sql)
-}
+// La categoría se muestra como «Superior › Subcategoría».
+const SELECT_PRODUCT: &str = "SELECT p.id,p.sku,p.name,p.category_id,CASE WHEN pc.name IS NULL THEN c.name ELSE pc.name||' › '||c.name END,p.variant,p.price,p.cost,p.stock,p.active FROM products p LEFT JOIN categories c ON c.id=p.category_id LEFT JOIN categories pc ON pc.id=c.parent_id";
 
 fn product_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Product> {
-    let card: String = r.get(6)?;
     Ok(Product {
         id: r.get(0)?,
         sku: r.get(1)?,
@@ -32,23 +19,37 @@ fn product_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Product> {
         category_id: r.get(3)?,
         category: r.get(4)?,
         variant: r.get(5)?,
-        card: serde_json::from_str(&card).unwrap_or(None),
-        price: r.get(7)?,
-        cost: r.get(8)?,
-        stock: r.get(9)?,
-        active: r.get(10)?,
+        attributes: vec![],
+        tags: vec![],
+        price: r.get(6)?,
+        cost: r.get(7)?,
+        stock: r.get(8)?,
+        active: r.get(9)?,
     })
 }
 
+fn with_details(c: &Connection, mut product: Product) -> Result<Product> {
+    (product.attributes, product.tags) = catalog::details(c, product.id)?;
+    Ok(product)
+}
+
+/// Busca por nombre, SKU, etiqueta o valor de atributo. La categoría incluye sus subcategorías.
 pub fn products(
     c: &Connection,
     search: &str,
     include_inactive: bool,
+    category_id: Option<i64>,
     offset: i64,
 ) -> Result<Vec<Product>> {
     let search = search.trim();
-    c.prepare(&format!("{SELECT_PRODUCT} WHERE (?2 OR p.active=1) AND (instr(unicode_lower(p.name),unicode_lower(?1))>0 OR instr(lower(p.sku),lower(?1))>0) ORDER BY p.name,p.id LIMIT 100 OFFSET ?3")).map_err(sql)?
-      .query_map(params![search,include_inactive,offset.max(0)],product_row).map_err(sql)?.collect::<rusqlite::Result<_>>().map_err(sql)
+    let rows: Vec<Product> = c.prepare(&format!("{SELECT_PRODUCT} WHERE (?2 OR p.active=1)
+        AND (?4 IS NULL OR p.category_id=?4 OR c.parent_id=?4)
+        AND (instr(unicode_lower(p.name),unicode_lower(?1))>0 OR instr(lower(p.sku),lower(?1))>0
+          OR EXISTS(SELECT 1 FROM product_tags t WHERE t.product_id=p.id AND instr(unicode_lower(t.tag),unicode_lower(?1))>0)
+          OR EXISTS(SELECT 1 FROM product_attributes v WHERE v.product_id=p.id AND instr(unicode_lower(v.value),unicode_lower(?1))>0))
+        ORDER BY p.name,p.id LIMIT 100 OFFSET ?3")).map_err(sql)?
+      .query_map(params![search,include_inactive,offset.max(0),category_id],product_row).map_err(sql)?.collect::<rusqlite::Result<_>>().map_err(sql)?;
+    rows.into_iter().map(|p| with_details(c, p)).collect()
 }
 
 pub fn product(c: &Connection, id: i64) -> Result<Product> {
@@ -59,7 +60,8 @@ pub fn product(c: &Connection, id: i64) -> Result<Product> {
     )
     .optional()
     .map_err(sql)?
-    .ok_or("El producto no existe.".into())
+    .ok_or_else(|| String::from("El producto no existe."))
+    .and_then(|p| with_details(c, p))
 }
 
 pub fn movements(c: &Connection, id: i64, offset: i64) -> Result<Vec<Movement>> {
@@ -68,7 +70,12 @@ pub fn movements(c: &Connection, id: i64, offset: i64) -> Result<Vec<Movement>> 
 
 pub fn sale(c: &Connection, id: i64) -> Result<Sale> {
     let mut sale = c.query_row("SELECT id,created_at,currency_code,store_name,method,total,received,change FROM sales WHERE id=?1",params![id],|r|Ok(Sale{id:r.get(0)?,folio:format!("V-{id:08}"),created_at:r.get(1)?,currency_code:r.get(2)?,store_name:r.get(3)?,method:r.get(4)?,total:r.get(5)?,received:r.get(6)?,change:r.get(7)?,items:vec![],cancellation:None})).optional().map_err(sql)?.ok_or("Venta inexistente.")?;
-    sale.items = c.prepare("SELECT product_id,sku,name,variant,card_json,quantity,price FROM sale_items WHERE sale_id=?1 ORDER BY id").map_err(sql)?.query_map(params![id],|r|{let card:String=r.get(4)?; Ok(SaleItem{product_id:r.get(0)?,sku:r.get(1)?,name:r.get(2)?,variant:r.get(3)?,card:serde_json::from_str(&card).unwrap_or(None),quantity:r.get(5)?,price:r.get(6)?})}).map_err(sql)?.collect::<rusqlite::Result<_>>().map_err(sql)?;
+    // Las ventas anteriores a los atributos conservan la carta en card_json.
+    sale.items = c.prepare("SELECT product_id,sku,name,variant,card_json,attributes_json,quantity,price FROM sale_items WHERE sale_id=?1 ORDER BY id").map_err(sql)?.query_map(params![id],|r|{
+        let card:String=r.get(4)?; let attributes:String=r.get(5)?;
+        let mut attributes:Vec<AttributeValue>=serde_json::from_str(&attributes).unwrap_or_default();
+        if attributes.is_empty() && let Ok(Some(card))=serde_json::from_str::<Option<CardDetails>>(&card) { attributes=catalog::legacy_card(&card); }
+        Ok(SaleItem{product_id:r.get(0)?,sku:r.get(1)?,name:r.get(2)?,variant:r.get(3)?,attributes,quantity:r.get(6)?,price:r.get(7)?})}).map_err(sql)?.collect::<rusqlite::Result<_>>().map_err(sql)?;
     sale.cancellation = c
         .query_row(
             "SELECT id,created_at,reason,refund,method FROM cancellations WHERE sale_id=?1",
@@ -167,43 +174,25 @@ pub fn report_csv(c: &Connection, start: &str, end: &str, tz: Tz) -> Result<Stri
     Ok(out)
 }
 
-pub fn put_category(c: &Connection, id: Option<i64>, name: &str) -> Result<()> {
-    if let Some(id) = id {
-        if c.execute(
-            "UPDATE categories SET name=?1 WHERE id=?2",
-            params![name, id],
-        )
-        .map_err(sql)?
-            != 1
-        {
-            return Err("Categoría inexistente.".into());
-        }
-    } else {
-        c.execute("INSERT INTO categories(name) VALUES(?1)", params![name])
-            .map_err(sql)?;
-    }
-    Ok(())
-}
 pub struct ProductValues<'a> {
     pub id: Option<i64>,
     pub sku: &'a str,
     pub name: &'a str,
     pub category_id: Option<i64>,
     pub variant: &'a str,
-    pub card_json: &'a str,
     pub price: i64,
     pub cost: i64,
     pub active: bool,
 }
 pub fn put_product(c: &Connection, p: ProductValues<'_>) -> Result<i64> {
     if let Some(id) = p.id {
-        let rows=c.execute("UPDATE products SET sku=?1,name=?2,category_id=?3,variant=?4,card_json=?5,price=?6,cost=?7,active=?8 WHERE id=?9",params![p.sku,p.name,p.category_id,p.variant,p.card_json,p.price,p.cost,p.active,id]).map_err(sql)?;
+        let rows=c.execute("UPDATE products SET sku=?1,name=?2,category_id=?3,variant=?4,card_json='{}',price=?5,cost=?6,active=?7 WHERE id=?8",params![p.sku,p.name,p.category_id,p.variant,p.price,p.cost,p.active,id]).map_err(sql)?;
         if rows != 1 {
             return Err("Producto inexistente.".into());
         }
         Ok(id)
     } else {
-        c.execute("INSERT INTO products(sku,name,category_id,variant,card_json,price,cost,active) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",params![p.sku,p.name,p.category_id,p.variant,p.card_json,p.price,p.cost,p.active]).map_err(sql)?;
+        c.execute("INSERT INTO products(sku,name,category_id,variant,price,cost,active) VALUES(?1,?2,?3,?4,?5,?6,?7)",params![p.sku,p.name,p.category_id,p.variant,p.price,p.cost,p.active]).map_err(sql)?;
         Ok(c.last_insert_rowid())
     }
 }
@@ -243,8 +232,8 @@ pub fn insert_sale(c: &Connection, s: NewSale<'_>) -> Result<i64> {
     Ok(c.last_insert_rowid())
 }
 pub fn insert_item(c: &Connection, sale_id: i64, p: &Product, quantity: i64) -> Result<()> {
-    let card = serde_json::to_string(&p.card).map_err(|e| e.to_string())?;
-    c.execute("INSERT INTO sale_items(sale_id,product_id,sku,name,variant,card_json,quantity,price) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",params![sale_id,p.id,p.sku,p.name,p.variant,card,quantity,p.price]).map_err(sql)?;
+    let attributes = serde_json::to_string(&p.attributes).map_err(|e| e.to_string())?;
+    c.execute("INSERT INTO sale_items(sale_id,product_id,sku,name,variant,card_json,attributes_json,quantity,price) VALUES(?1,?2,?3,?4,?5,'null',?6,?7,?8)",params![sale_id,p.id,p.sku,p.name,p.variant,attributes,quantity,p.price]).map_err(sql)?;
     Ok(())
 }
 pub fn insert_cancellation(

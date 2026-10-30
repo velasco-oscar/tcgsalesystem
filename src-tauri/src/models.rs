@@ -1,5 +1,6 @@
-﻿use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
+// Formato anterior de cartas TCG; solo se lee para migrar productos y mostrar ventas antiguas.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CardDetails {
@@ -19,7 +20,8 @@ pub struct ProductInput {
     pub name: String,
     pub category_id: Option<i64>,
     pub variant: String,
-    pub card: Option<CardDetails>,
+    pub attributes: Vec<AttributeValueInput>,
+    pub tags: Vec<String>,
     pub price: String,
     pub cost: String,
     pub initial_stock: i64,
@@ -35,17 +37,69 @@ pub struct Product {
     pub category_id: Option<i64>,
     pub category: Option<String>,
     pub variant: String,
-    pub card: Option<CardDetails>,
+    pub attributes: Vec<AttributeValue>,
+    pub tags: Vec<String>,
     pub price: i64,
     pub cost: i64,
     pub stock: i64,
     pub active: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AttributeValueInput {
+    pub attribute_id: i64,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AttributeValue {
+    // 0 en ventas anteriores a los atributos.
+    #[serde(default)]
+    pub attribute_id: i64,
+    pub name: String,
+    pub kind: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Attribute {
+    pub id: i64,
+    pub name: String,
+    pub kind: String,
+    pub options: Vec<String>,
+    pub required: bool,
+}
+
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Category {
     pub id: i64,
     pub name: String,
+    pub parent_id: Option<i64>,
+    pub attributes: Vec<Attribute>,
+    pub product_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AttributeInput {
+    pub id: Option<i64>,
+    pub name: String,
+    pub kind: String,
+    pub options: Vec<String>,
+    pub required: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CategoryInput {
+    pub id: Option<i64>,
+    pub name: String,
+    pub parent_id: Option<i64>,
+    pub attributes: Vec<AttributeInput>,
 }
 
 #[derive(Serialize)]
@@ -86,7 +140,7 @@ pub struct SaleItem {
     pub sku: String,
     pub name: String,
     pub variant: String,
-    pub card: Option<CardDetails>,
+    pub attributes: Vec<AttributeValue>,
     pub quantity: i64,
     pub price: i64,
 }

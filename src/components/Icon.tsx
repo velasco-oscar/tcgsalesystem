@@ -1,4 +1,4 @@
-export type IconName = "home" | "sale" | "catalog" | "inventory" | "history" | "report" | "backup" | "settings" | "panel" | "arrow" | "check" | "search" | "sun" | "moon" | "monitor";
+export type IconName = "home" | "sale" | "catalog" | "inventory" | "history" | "report" | "backup" | "settings" | "panel" | "arrow" | "check" | "search" | "sun" | "moon" | "monitor" | "plus" | "close";
 
 const paths: Record<IconName, string> = {
   home: "m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z",
@@ -16,6 +16,8 @@ const paths: Record<IconName, string> = {
   sun: "M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8Z M12 2v2 M12 20v2 M4.9 4.9l1.4 1.4 M17.7 17.7l1.4 1.4 M2 12h2 M20 12h2 M4.9 19.1l1.4-1.4 M17.7 6.3l1.4-1.4",
   moon: "M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z",
   monitor: "M3 4h18v12H3Z M8 20h8 M12 16v4",
+  plus: "M12 5v14 M5 12h14",
+  close: "M6 6l12 12 M18 6 6 18",
 };
 
 export function Icon({ name }: { name: IconName }) {

@@ -1,15 +1,16 @@
-﻿import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import App from '../src/App';
 import type { AppStatus } from '../src/lib/api';
-import type { Checkout, Product, Sale } from '../src/lib/pos';
+import type { Category, Checkout, Product, Sale } from '../src/lib/pos';
 import { decimal, parseMoney, today } from '../src/lib/pos';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(), isTauri: () => true }));
 let status: AppStatus;
-const p: Product = { id: 1, sku: 'A', name: 'Producto A', categoryId: null, category: null, variant: 'Azul', card: null, price: 1235, cost: 400, stock: 5, active: true };
-const receipt: Sale = { id: 1, folio: 'V-00000001', createdAt: '2026-10-15T18:00:00.000Z', currencyCode: 'MXN', storeName: 'Mi negocio', method: 'cash', total: 1235, received: 2000, change: 765, items: [{ productId: 1, sku: 'A', name: 'Producto A', variant: 'Azul', card: null, quantity: 1, price: 1235 }], cancellation: null };
+let categories: Category[];
+const p: Product = { id: 1, sku: 'A', name: 'Producto A', categoryId: null, category: null, variant: 'Azul', attributes: [], tags: [], price: 1235, cost: 400, stock: 5, active: true };
+const receipt: Sale = { id: 1, folio: 'V-00000001', createdAt: '2026-10-15T18:00:00.000Z', currencyCode: 'MXN', storeName: 'Mi negocio', method: 'cash', total: 1235, received: 2000, change: 765, items: [{ productId: 1, sku: 'A', name: 'Producto A', variant: 'Azul', attributes: [], quantity: 1, price: 1235 }], cancellation: null };
 async function navigate(name: string) {
   fireEvent.click(within(await screen.findByRole('navigation', { name: 'Navegación principal' })).getByRole('button', { name }));
 }
@@ -21,6 +22,7 @@ async function startSale() {
 beforeEach(() => {
   localStorage.clear(); vi.clearAllMocks();
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value() { this.setAttribute('open', ''); } });
+  categories = [];
   status = { version: '0.1.0', schemaVersion: 3, settings: { storeName: 'Mi negocio', businessSector: 'Papelería', currencyCode: 'MXN', timeZone: 'America/Tijuana' }, currencies: [{ code: 'MXN', name: 'Peso mexicano', minorUnits: 2 }, { code: 'JPY', name: 'Yen', minorUnits: 0 }], currencyLocked: false, timeZoneLocked: false };
   vi.mocked(invoke).mockImplementation(async (command, args) => {
     const a = args as Record<string, unknown> | undefined;
@@ -29,7 +31,8 @@ beforeEach(() => {
       case 'save_store_settings': status.settings = a?.settings as typeof status.settings; return status.settings;
       case 'get_products': return [p];
       case 'get_product': return p;
-      case 'get_categories': return [];
+      case 'get_categories': return structuredClone(categories);
+      case 'save_category': return 7;
       case 'get_movements': return [];
       case 'save_product': status.currencyLocked = true; return 1;
       case 'checkout': return receipt;
@@ -85,9 +88,9 @@ describe('flujo del POS (puente Tauri simulado)', () => {
     render(<App />); await navigate('Catálogo');
     fireEvent.click(await screen.findByRole('button', { name: 'Nuevo producto' }));
     const dialog = await screen.findByRole('dialog');
-    fireEvent.change(within(dialog).getByLabelText('SKU único'), { target: { value: 'NEW' } });
+    fireEvent.change(within(dialog).getByLabelText('SKU'), { target: { value: 'NEW' } });
     fireEvent.change(within(dialog).getByLabelText('Nombre'), { target: { value: 'Nuevo' } });
-    fireEvent.change(within(dialog).getByLabelText(/Precio final/), { target: { value: '0.10' } });
+    fireEvent.change(within(dialog).getByLabelText(/Precio/), { target: { value: '0.10' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Guardar producto' }));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('save_product', expect.objectContaining({ input: expect.objectContaining({ price: '0.10', cost: '0', initialStock: 0 }) })));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -139,26 +142,26 @@ describe('flujo del POS (puente Tauri simulado)', () => {
   it('no registra tarjeta sin confirmar el pago recibido', async () => {
     await startSale(); fireEvent.change(screen.getByLabelText('Método de pago'), { target: { value: 'card' } });
     expect(screen.getByRole('button', { name: 'Confirmar venta' })).toHaveProperty('disabled', true);
-    fireEvent.click(screen.getByRole('checkbox', { name: /Confirmo que recibí el pago/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /Pago recibido/ }));
     expect(screen.getByRole('button', { name: 'Confirmar venta' })).toHaveProperty('disabled', false);
   });
   it('actualiza el carrito por identificador aunque el SKU coincida con muchos resultados de búsqueda', async () => {
     const implementation = vi.mocked(invoke).getMockImplementation()!;
     vi.mocked(invoke).mockImplementation((command, args) => command === 'get_product' ? Promise.resolve({ ...p, price: 2345 }) : implementation(command, args));
-    await startSale(); fireEvent.click(screen.getByRole('button', { name: 'Actualizar precios y existencias' }));
-    expect(await screen.findByText('Precios y existencias actualizados. Revisa el total antes de cobrar.')).toBeTruthy();
+    await startSale(); fireEvent.click(screen.getByRole('button', { name: 'Actualizar precios' }));
+    expect(await screen.findByText('Carrito actualizado')).toBeTruthy();
     expect(screen.getByRole('status', { name: 'Total' }).textContent).toBe('23.45 MXN');
     expect(invoke).toHaveBeenCalledWith('get_product', { id: 1 });
   });
   it('exige mercancía disponible y dinero devuelto antes de anular', async () => {
     render(<App />); await navigate('Historial');
-    fireEvent.click(await screen.findByRole('button', { name: 'Ver venta' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver' }));
     const dialog = await screen.findByRole('dialog');
-    const confirm = within(dialog).getByRole('button', { name: 'Confirmar anulación completa' }); expect(confirm).toHaveProperty('disabled', true);
-    fireEvent.change(within(dialog).getByLabelText('Motivo obligatorio'), { target: { value: 'Devolución completa' } });
+    const confirm = within(dialog).getByRole('button', { name: 'Anular venta' }); expect(confirm).toHaveProperty('disabled', true);
+    fireEvent.change(within(dialog).getByLabelText('Motivo'), { target: { value: 'Devolución completa' } });
     fireEvent.click(within(dialog).getByRole('checkbox', { name: /Toda la mercancía/ })); expect(confirm).toHaveProperty('disabled', true);
-    fireEvent.click(within(dialog).getByRole('checkbox', { name: /Devolví al cliente/ })); fireEvent.click(confirm);
-    expect(await screen.findByText('Venta anulada')).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: /Devolví el dinero/ })); fireEvent.click(confirm);
+    expect(await within(dialog).findByText('Anulada')).toBeTruthy();
     expect(invoke).toHaveBeenCalledWith('cancel_sale', { id: 1, reason: 'Devolución completa', restocked: true, refunded: true });
   });
   it('cambia entre modo claro y oscuro y recuerda la elección en este equipo', async () => {
@@ -172,11 +175,47 @@ describe('flujo del POS (puente Tauri simulado)', () => {
     expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
     expect(localStorage.getItem('tcg-pos.theme.v1')).toBeNull();
   });
+  it('crea una categoría desde la plantilla de cartas', async () => {
+    render(<App />); await navigate('Catálogo');
+    fireEvent.click(await screen.findByRole('tab', { name: 'Categorías' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Nueva categoría' })[0]);
+    const dialog = await screen.findByRole('dialog', { name: 'Nueva categoría' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cartas TCG' }));
+    expect(within(dialog).getByLabelText('Nombre')).toHaveProperty('value', 'Cartas TCG');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Quitar Acabado' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Guardar categoría' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    const { input } = vi.mocked(invoke).mock.calls.find(([command]) => command === 'save_category')?.[1] as { input: { name: string; parentId: number | null; attributes: { name: string; kind: string; options: string[] }[] } };
+    expect(input.name).toBe('Cartas TCG'); expect(input.parentId).toBeNull();
+    expect(input.attributes.map((a) => a.name)).toEqual(['Juego', 'Expansión', 'Número', 'Idioma', 'Condición']);
+    expect(input.attributes[4]).toMatchObject({ kind: 'list', options: ['NM', 'LP', 'MP', 'HP', 'DMG'] });
+  });
+  it('pide los atributos de la categoría y la superior al guardar un producto', async () => {
+    categories = [
+      { id: 7, name: 'Cartas', parentId: null, productCount: 0, attributes: [{ id: 1, name: 'Condición', kind: 'list', options: ['NM', 'LP'], required: true }] },
+      { id: 8, name: 'Pokémon', parentId: 7, productCount: 0, attributes: [{ id: 2, name: 'Número', kind: 'text', options: [], required: false }] },
+    ];
+    render(<App />); await navigate('Catálogo');
+    fireEvent.click(await screen.findByRole('button', { name: 'Nuevo producto' }));
+    const dialog = await screen.findByRole('dialog');
+    await within(dialog).findByRole('option', { name: 'Cartas › Pokémon' });
+    fireEvent.change(within(dialog).getByLabelText('Categoría'), { target: { value: '8' } });
+    fireEvent.change(within(dialog).getByLabelText('Condición'), { target: { value: 'LP' } });
+    fireEvent.change(within(dialog).getByLabelText('Número (opcional)'), { target: { value: '25' } });
+    fireEvent.change(within(dialog).getByLabelText('SKU'), { target: { value: 'PIKA' } });
+    fireEvent.change(within(dialog).getByLabelText('Nombre'), { target: { value: 'Pikachu' } });
+    fireEvent.change(within(dialog).getByLabelText(/Precio/), { target: { value: '45' } });
+    fireEvent.change(within(dialog).getByLabelText('Etiquetas (opcional)'), { target: { value: 'vitrina, , preventa' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Guardar producto' }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('save_product', expect.objectContaining({ input: expect.objectContaining({
+      categoryId: 8, tags: ['vitrina', 'preventa'], attributes: [{ attributeId: 1, value: 'LP' }, { attributeId: 2, value: '25' }],
+    }) })));
+  });
   it('exige confirmación escrita antes de restaurar', async () => {
     render(<App />); await navigate('Respaldos'); fireEvent.click(screen.getByRole('button', { name: 'Seleccionar respaldo' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Confirmar reemplazo de datos' });
-    const button = within(dialog).getByRole('button', { name: 'Reemplazar datos y recargar' }); expect(button).toHaveProperty('disabled', true);
-    fireEvent.change(within(dialog).getByLabelText('Escribe REEMPLAZAR para confirmar'), { target: { value: 'REEMPLAZAR' } }); expect(button).toHaveProperty('disabled', false);
+    const dialog = await screen.findByRole('dialog', { name: 'Restaurar respaldo' });
+    const button = within(dialog).getByRole('button', { name: 'Restaurar' }); expect(button).toHaveProperty('disabled', true);
+    fireEvent.change(within(dialog).getByLabelText('Escribe REEMPLAZAR'), { target: { value: 'REEMPLAZAR' } }); expect(button).toHaveProperty('disabled', false);
     expect(vi.mocked(invoke).mock.calls.some(([command]) => command === 'restore_backup')).toBe(false);
   });
 });

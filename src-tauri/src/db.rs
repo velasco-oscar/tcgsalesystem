@@ -8,7 +8,7 @@ use std::{
 };
 
 type DbResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
-pub const SCHEMA_VERSION: i64 = 3;
+pub const SCHEMA_VERSION: i64 = 4;
 
 pub fn open(path: &Path) -> DbResult<Connection> {
     let mut connection = Connection::open(path)?;
@@ -62,6 +62,10 @@ fn migrate(connection: &mut Connection, path: &Path) -> DbResult<()> {
     }
     if version < 3 {
         transaction.execute_batch(include_str!("../migrations/003_pos.sql"))?;
+    }
+    if version < 4 {
+        transaction.execute_batch(include_str!("../migrations/004_catalog.sql"))?;
+        crate::catalog::migrate_cards(&transaction)?;
     }
     transaction.pragma_update(None, "user_version", SCHEMA_VERSION)?;
     transaction.commit()?;
