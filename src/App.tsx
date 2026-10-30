@@ -107,7 +107,8 @@ function App() {
   return <div className={`workspace${collapsed ? " sidebar-collapsed" : ""}`}>
     <a className="skip-link" href="#main-content">Ir al contenido</a>
     <aside id="app-sidebar" className="sidebar" aria-label="Menú de la aplicación">
-      <div className="sidebar-brand brand"><Brand /></div>
+      <div className="sidebar-brand"><div className="brand"><Brand /></div>
+        <button className="sidebar-toggle" aria-label={collapsed ? "Expandir menú lateral" : "Contraer menú lateral"} title={collapsed ? "Expandir menú" : "Contraer menú"} aria-expanded={!collapsed} aria-controls="app-sidebar" onClick={() => setCollapsed((current) => !current)}><Icon name="panel" /></button></div>
       <div className="sidebar-business"><strong title={status.settings.storeName}>{status.settings.storeName}</strong>
         <span title={status.settings.businessSector}>{status.settings.businessSector}</span></div>
       <nav className="sidebar-nav" aria-label="Navegación principal">
@@ -132,7 +133,6 @@ function App() {
 
     <div className="workspace-body">
       <header className="workspace-header">
-        <button className="icon-button sidebar-toggle" aria-label={collapsed ? "Expandir menú lateral" : "Contraer menú lateral"} aria-expanded={!collapsed} aria-controls="app-sidebar" onClick={() => setCollapsed((current) => !current)}><Icon name="panel" /></button>
         <nav className="breadcrumb" aria-label="Ubicación">
           <Icon name={page} />
           {page !== "home" && <><button onClick={() => setPage("home")}>Inicio</button><span aria-hidden="true">/</span></>}
